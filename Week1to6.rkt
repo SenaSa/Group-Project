@@ -199,3 +199,195 @@
 (test (inS-parse '((3 + 4) + 3)) (plusS (plusS (numS 3) (numS 4)) (numS 3)))
 (test (inS-parse '(u- 44)) (uminusS (numS 44)))
 (test (inS-parse '7) (numS 7))
+
+;Formal Grammar
+
+ ; S-> number
+ ; S -> symbol
+ ; S -> + S S
+ ; S -> - S S
+ ; S -> * S S
+ ; S-> (S)
+ ;S->F
+
+; Function definition
+; F is a function
+; Ls is a list of parameter
+; B is body
+; F -> (Name)Ls{B}
+; Name -> symbol
+; B-> S
+; Ls-> listOfSymbols
+
+;; Function Application
+ ;Fa is function application
+ ;Fs is a function symbol
+ ;La is a list of arguments
+ ;Fa -> FsLa
+ ;La  -> listOfSymbols
+ ;Fs -> symbol
+     
+
+
+(define-type ExprC
+[numC (n : number)]
+[idC (s : symbol)] ; identifier for the arguments
+; aplication, with the name of the
+; function and the argument
+;; Function Application with multiple parameters.
+[appC (fun : symbol) (arg : (listof ExprC))]
+[plusC (l : ExprC) (r : ExprC)]
+[subC (l : ExprC) (r : ExprC)]
+[mulC (l : ExprC) (r : ExprC)]
+;[expC (l : ExprC) (r : ExprC)]
+[ifC (exp1 : ExprC) (exp2 : ExprC) (exp3 : ExprC)]
+[factC (x : number)]
+[factaccC (x : number) (acc : number)]
+[fibonacciC (x : number)]
+)
+
+;;Defines datatype for function definitions
+;;function definitions have a name, one argument, and a body
+;; Function Definition with multiple parameters. 
+
+(define-type FunDefC
+[fdC (name : symbol) (arg : (listof symbol)) (body : ExprC)])
+
+;; parseE s-expression -> ExprC
+;; convert a quoted s expression into the equivalent ArithC form
+;; examples
+;; '(+ 23 (+ 23 5)))-> (plusC (numC 23)(plusC (numC 23) (numC 5))))
+;; (symbol->s-exp 'x))-> (idC 'x))
+;; '(if 1 2 3)->(ifC (numC 1) (numC 2) (numC 3)))
+(define (parseE [s : (listof s-expression)]) : ExprC
+(cond
+[(s-exp-number? s) (numC (s-exp->number s))]
+[(s-exp-symbol? s) (idC (s-exp->symbol s))]
+[(s-exp-list? s)
+(let ([sl (s-exp->list s)])
+(cond
+[(= (length sl) 4)
+(if (symbol=? 'ifC (s-exp->symbol (first sl)))
+(ifC (parseE (second sl))
+(parseE (third sl))
+(parseE (fourth sl)))
+(error 'parseE "invalid expression as input"))]
+[(= (length sl) 3)
+(case (s-exp->symbol (first sl))
+[(+) (plusC (parseE (second sl)) (parseE (third sl)))]
+[(*) (mulC (parseE (second sl)) (parseE (third sl)))]
+[(-) (subC (parseE (second sl)) (parseE (third sl)))]
+;[(**) (expC (parseE (second sl)) (parseE (third sl)))]
+[else (error 'parseE "invalid list input")]
+)]
+[(= (length sl) 2)
+(appC (s-exp->symbol (first sl)) (parseE (second sl)))]
+[else (error 'parseE "invalid list input")])
+)]
+[else (error 'parseE "invalid input")]))
+;; Tests :
+"tests"
+(test (parseE '(+ 3 4)) (plusC (numC 3) (numC 4)))
+(test (parseE '(* 12 7)) (mulC (numC 12) (numC 7)))
+(test (parseE '(+ 23 (+ 23 5)))
+(plusC (numC 23)
+(plusC (numC 23) (numC 5))))
+(test (parseE (symbol->s-exp 'x)) (idC 'x))
+(test (parseE '(double 13))
+(appC 'double (numC 13)))
+;(test(parse '(if 1 2 3))(ifC (numC 1) (numC 2) (numC 3)))
+
+
+;get-fundef
+;;symbol (list of func definitions)-> : FunDefC
+;Purpose
+;; it takes a symobol and generate a function definition.
+(fdC 'double '(x , y) (plusC (idC 'x) (idC 'y)))
+;; FunDefC
+(define (get-fundef [n : symbol] [fds : (listof FunDefC)]) : FunDefC
+(cond
+[(empty? fds) (error 'get-fundef "reference to undefined function")]
+[(cons? fds) (cond
+[(equal? n (fdC-name (first fds))) (first fds)]
+[else (get-fundef n (rest fds))])]))
+
+;Subst
+;; ExprC symbol ExprC -> ExprC
+;Purpose
+;; it takes a expression ( numC 7) , argument ('x) and the function it self. It produces the function with changes(numC 7) placed for every 'x in function
+;;Examples
+;;(subst(numC 7) 'x (plusC (plusC (idC 'x) (idC 'x)) (idC 'x))) -> (plusC (plusC (numC 7) (numC 7)) (numC 7))
+(define (subst [what : (listof ExprC)] [for : (listof symbol)] [in : ExprC]) : ExprC
+(type-case ExprC in
+[numC (n) in]
+[idC (s) (cond
+[(symbol=? s for) what]
+[else in])]
+[appC (f a) (appC f (subst what for a))]
+[plusC (l r) (plusC (subst what for l)
+(subst what for r))]
+[subC (l r) (plusC (subst what for l)
+(subst what for r))]
+[mulC (l r) (mulC (subst what for l)
+(subst what for r))]
+;[expC (l r) (mulC (subst what for l)
+;(subst what for r))]
+[factC (x) (factC (subst what for x))]
+[ifC (exp1 exp2 exp3) (ifC (subst what for exp1) (subst what for exp2) (subst what for exp3))]
+[factaccC (x fact) (factaccC (subst what for x) (subst what for fact))]
+[fibonacciC (x) (fibonacciC (subst what for x))]
+
+  ))
+;Tests for substitution
+(test (subst(numC 7) 'x (plusC (plusC (idC 'x) (idC 'x)) (idC 'x))) (plusC (plusC (numC 7) (numC 7)) (numC 7)))
+(test (subst(plusC (numC 3) (numC 4)) 'y (plusC (mulC (idC 'y) (idC 'y)) (idC 'y))) (plusC (mulC (plusC (numC 3) (numC 4)) (plusC (numC 3) (numC 4))) (plusC (numC 3) (numC 4))))
+;(subst (numC 7 numC 8) '(x y) (plusC (plusC (idC 'x) (idC 'y))))
+(test (subst (numC 5) 'x (plusC (idC 'x) (idC 'x)))
+(plusC (numC 5) (numC 5)))
+(test (subst (numC 5) 'x (mulC (idC 'x) (idC 'x)))
+(mulC (numC 5) (numC 5)))
+
+;; Interp Eager
+;; ExprC -> fds -> number
+;; it takes an expression and list of function definitions and output
+;; a number
+;; Function Application
+;;Examples
+ ;(numC 7) (fdC 'double  'x (plusC (idC  'x) (idC  'x))) -> 7
+ ;(ifC(numC -5) (numC 1) (numC 0)) (fdC 'double  'x (plusC (idC  'x) (idC  'x))) -> 0
+(define (interp [e : ExprC] [fds : (listof FunDefC)]) : number
+(type-case ExprC e
+[numC (n) n]
+[idC (_) (error 'interp "shouldn't get here")]
+[appC (f a) (local ([define fd (get-fundef f fds)])
+(interp (subst a
+(fdC-arg fd)
+(fdC-body fd))
+fds))]
+[ifC (exp1 exp2 exp3) (cond
+[(> (interp exp1 fds) 0) (interp exp2 fds)]
+[else (interp exp3 fds)])]
+[plusC (l r) (+ (interp l fds) (interp r fds))]
+[subC (l r) (- (interp l fds) (interp r fds))]
+[mulC (l r) (* (interp l fds) (interp r fds))]
+;[expC (l r) (expt (interp l fds) (interp r fds))]
+[factC (x) (cond
+[(= x 1) 1]
+[else (* x (interp (factC (- x 1)) fds))])]
+  [factaccC (x acc) (cond
+[ (= x 1) acc]
+[else ( interp (factaccC (- x 1) (* x acc)) fds )])]
+[fibonacciC (x ) (cond
+[ (or (= x 1) (= x 2))1]
+[else (+( interp (fibonacciC (- x 1)) (fibonacciC (- x 2)) fds ))])]
+))
+;Tests
+(test(interp(factC 4 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 24)
+(test(interp(factC 5 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 120)
+(test(interp(factC 3 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 6)
+(test(interp(factC 2 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 2)
+;(test (interp(factaccC 3 1 ) (plusC (multC (idC 'x) ))))
+(test (interp (numC 4) (list)) 4)
+(test (interp (plusC (numC 1) (numC 2)) (list)) 3)
+(test (interp (mulC (numC 5) (numC 2)) (list)) 10)
+(test (interp (appC 'double (numC 10)) (list (fdC 'double 'x (plusC (idC 'x) (idC 'x))))) 20)
