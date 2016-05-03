@@ -391,3 +391,415 @@ fds))]
 (test (interp (plusC (numC 1) (numC 2)) (list)) 3)
 (test (interp (mulC (numC 5) (numC 2)) (list)) 10)
 (test (interp (appC 'double (numC 10)) (list (fdC 'double 'x (plusC (idC 'x) (idC 'x))))) 20)
+
+;Interp LAZY
+;;ExprC -> fds (listof FunDefC) - > number
+;Purpose
+;;it takes an expression and list of function definitions and output a number (Function Application)
+;;Examples
+ ;(numC 7) (fdC 'double  'x (plusC (idC  'x) (idC  'x))) -> 7
+ ;(ifC(numC -5) (numC 1) (numC 0)) (fdC 'double  'x (plusC (idC  'x) (idC  'x))) -> 0
+(define (interp2 [e : ExprC] [fds : (listof FunDefC)]) : number
+(type-case ExprC e
+[numC (n) n]
+[idC (_) (error 'interp2 "shouldn't get here")]
+[appC (f a) (local ([define fd (get-fundef f fds)])
+(interp2 (subst a (fdC-arg fd) (fdC-body fd)) fds))]
+[ifC (exp1 exp2 exp3) (cond
+[(> (interp2 exp1 fds) 0) (interp2 exp2 fds)]
+[else (interp2 exp3 fds)])]
+[plusC (l r) (+ (interp2 l fds) (interp2 r fds))]
+[subC (l r) (- (interp2 l fds) (interp2 r fds))]
+[mulC (l r) (* (interp2 l fds) (interp2 r fds))]
+;[expC (l r) (* (interp2 l fds) (interp2 r fds))]
+;; expC is taking * because I didnt write the ** operation
+[factC (x) (cond
+[(= x 1) 1]
+[else (* x (interp2 (factC (- x 1)) fds))])]
+[factaccC (x acc) (cond
+[ (= x 1) acc]
+[else ( interp (factaccC (- x 1) (* x acc)) fds )])]
+[fibonacciC (x ) (cond
+[ (or (= x 1) (= x 2))1]
+[else (+( interp (fibonacciC (- x 1)) (fibonacciC (- x 2)) fds ))])]))
+
+;Tests
+(test(interp2(factC 4 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 24)
+(test(interp2(factC 5 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 120)
+(test(interp2(factC 3 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 6)
+(test(interp2(factC 2 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 2)
+;(test (interp(factaccC 3 1 ) (plusC (multC (idC 'x) ))))
+(test (interp2 (numC 4) (list)) 4)
+(test (interp2 (plusC (numC 1) (numC 2)) (list)) 3)
+(test (interp2 (mulC (numC 5) (numC 2)) (list)) 10)
+(test (interp2 (appC 'double (numC 10)) (list (fdC 'double 'x (plusC (idC 'x) (idC 'x))))) 20)
+(test (interp2(mulC (numC 7) (numC 5)) (fdC 'double  'x (plusC (idC  'x) (idC  'x)))) 35)
+(test (interp2(mulC (numC 11) (numC 8)) (fdC 'double  'x (plusC (idC  'x) (idC  'x)))) 88)
+;(test (interp2(ifC(subC (numC 34) (numC 40)) (expC (numC 1) (numC 7)) (mulC (numC 0) (numC 5))) (fdC 'double  'x (plusC (idC  'x) (idC  'x)))) 0)
+(test (interp2(ifC(plusC (numC -5) (numC 10)) (mulC (numC 1) (numC 1)) (subC (numC 4) (numC 4))) (fdC 'double  'x (plusC (idC  'x) (idC  'x)))) 1)
+
+
+
+;Binding
+
+;this function takes symbol as name and value which is number
+
+;to bind any funciton
+
+
+(define-type Binding [bind (name : symbol) (val : number)])
+
+
+;; An alias to work easily on Environment.
+
+(define-type-alias Environment (listof Binding))
+
+
+;; Empty environment.
+
+(define mt-env empty)
+
+
+;; Extending environment
+
+(define extend-env cons)
+
+
+;; Example Environment.
+(define EnvNameSpace
+  (list
+   (bind 'x (numC 5))
+   (bind 'y (numC 6))
+   (bind 'z (numC 7))
+   ))
+
+;;lookup function takes n as a symbol and environment which includes binding values,
+
+;; then it checks wheter this funciton in environment or not?
+
+;;if there is,it produces value otherwise it gives error
+
+
+(define (lookup [for : symbol] [env : Environment]) : number
+
+  (cond
+
+    [(empty? env) (error 'lookup "name not found")]
+
+    [else (cond
+
+            [(symbol=? for (bind-name (first env)))
+
+             (bind-val (first env))]
+
+            [else (lookup for (rest env))])]))
+
+(test(lookup 'x EnvNameSpace)( numC 5))
+(test (lookup 'y EnvNameSpace) ( numC 6))
+(test (lookup 'z EnvNameSpace)( numC 7))
+
+;; interp : ExprC (listof FunDefC) -> number
+
+;; Interpreter 
+
+;; Purpose : To interpreter given ExprC to number
+
+;; Template : 
+
+;(define (interp [expr : ExprC] [env : Environment][fds : (listof FunDefC)]) : number
+
+;  (type-case
+
+;    [n ...]
+
+;    [id ...]
+
+;     [app..]
+
+;    [plusC..]
+
+;     [multC..]
+
+(define (interp-env [expr : ExprC] [env : Environment] [fds : (listof FunDefC)]) : number
+
+  (type-case ExprC expr
+
+    [numC (n) n]
+
+    [idC (n) (lookup n env)]
+
+    [appC (f a) (local ([define fd (get-fundef f fds)])
+
+                  (interp-env (fdC-body fd)
+
+                          (extend-env (bind (fdC-arg fd)
+
+                                            (interp-env a env fds))
+
+                                      mt-env) fds))]
+
+    [plusC (l r) (+ (interp-env l env fds) (interp-env r env fds))]
+    [subC (l r) (- (interp-env l env fds) (interp-env r env fds))]
+
+    [mulC (l r) (* (interp-env l env fds) (interp-env r env fds))]
+
+
+    [ifC (pred t f)
+
+            (if (= 0 (interp-env pred env fds))
+                 (interp-env t env fds)
+                 (interp-env f env fds))]
+
+ [factC (x) (cond
+               [(= x 1) 1]
+              [else (* x (interp-env (factC (- x 1)) env fds))])]
+
+
+
+[factaccC (x acc) (cond
+                     [ (= x 1) acc]
+                       [else ( interp-env (factaccC (- x 1) (* x acc)) env fds )])]
+
+[fibonacciC (x ) (cond
+                     [ (or (= x 1) (= x 2))1]
+                       [else (+( interp-env (fibonacciC (- x 1)) (fibonacciC (- x 2)) env fds ))])]
+
+    ))
+
+"TEST of Interp-env"
+(test (interp-env (plusC (numC 10) (appC 'const5 (numC 10)))
+              mt-env
+              (list (fdC 'const5 '_ (numC 5))))
+      15)
+
+(test (interp-env (plusC (numC 10) (appC 'double (plusC (numC 1) (numC 2))))
+              mt-env
+              (list (fdC 'double 'x (plusC (idC 'x) (idC 'x)))))
+      16)
+
+(test (interp-env (plusC (numC 10) (appC 'quadruple (plusC (numC 1) (numC 2))))
+              mt-env
+              (list (fdC 'quadruple 'x (appC 'double (appC 'double (idC 'x))))
+                    (fdC 'double 'x (plusC (idC 'x) (idC 'x)))))
+      22)
+
+(test (interp-env (mulC (numC 10 ) (appC 'quadruple (plusC (numC 1) (numC 2))))
+              mt-env
+              (list (fdC 'quadruple 'x (appC 'double (appC 'double (idC 'x))))
+                    (fdC 'double 'x (plusC (idC 'x) (idC 'x)))))
+      44);bad one
+
+(test (interp-env (mulC (numC 10 ) (appC 'double (plusC (numC 1) (numC 2))))
+              mt-env
+              (list (fdC 'quadruple 'x (appC 'double (appC 'double (idC 'x))))
+                    (fdC 'double 'x (plusC (idC 'x) (idC 'x)))))
+      60)
+
+
+
+;Interp LAZY
+;;ExprC -> fds (listof FunDefC) - > number
+;Purpose
+;;it takes an expression and list of function definitions and output a number (Function Application)
+;;Examples
+ ;(numC 7) (fdC 'double  'x (plusC (idC  'x) (idC  'x))) -> 7
+ ;(ifC(numC -5) (numC 1) (numC 0)) (fdC 'double  'x (plusC (idC  'x) (idC  'x))) -> 0
+(define (interp2 [e : ExprC] [fds : (listof FunDefC)]) : number
+(type-case ExprC e
+[numC (n) n]
+[idC (_) (error 'interp2 "shouldn't get here")]
+[appC (f a) (local ([define fd (get-fundef f fds)])
+(interp2 (subst a (fdC-arg fd) (fdC-body fd)) fds))]
+[ifC (exp1 exp2 exp3) (cond
+[(> (interp2 exp1 fds) 0) (interp2 exp2 fds)]
+[else (interp2 exp3 fds)])]
+[plusC (l r) (+ (interp2 l fds) (interp2 r fds))]
+[subC (l r) (- (interp2 l fds) (interp2 r fds))]
+[mulC (l r) (* (interp2 l fds) (interp2 r fds))]
+;[expC (l r) (* (interp2 l fds) (interp2 r fds))]
+;; expC is taking * because I didnt write the ** operation
+[factC (x) (cond
+[(= x 1) 1]
+[else (* x (interp2 (factC (- x 1)) fds))])]
+[factaccC (x acc) (cond
+[ (= x 1) acc]
+[else ( interp (factaccC (- x 1) (* x acc)) fds )])]
+[fibonacciC (x ) (cond
+[ (or (= x 1) (= x 2))1]
+[else (+( interp (fibonacciC (- x 1)) (fibonacciC (- x 2)) fds ))])]))
+
+;Tests
+(test(interp2(factC 4 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 24)
+(test(interp2(factC 5 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 120)
+(test(interp2(factC 3 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 6)
+(test(interp2(factC 2 )(fdC 'double 'x (plusC (idC 'x) (idC 'x)))) 2)
+;(test (interp(factaccC 3 1 ) (plusC (multC (idC 'x) ))))
+(test (interp2 (numC 4) (list)) 4)
+(test (interp2 (plusC (numC 1) (numC 2)) (list)) 3)
+(test (interp2 (mulC (numC 5) (numC 2)) (list)) 10)
+(test (interp2 (appC 'double (numC 10)) (list (fdC 'double 'x (plusC (idC 'x) (idC 'x))))) 20)
+(test (interp2(mulC (numC 7) (numC 5)) (fdC 'double  'x (plusC (idC  'x) (idC  'x)))) 35)
+(test (interp2(mulC (numC 11) (numC 8)) (fdC 'double  'x (plusC (idC  'x) (idC  'x)))) 88)
+;(test (interp2(ifC(subC (numC 34) (numC 40)) (expC (numC 1) (numC 7)) (mulC (numC 0) (numC 5))) (fdC 'double  'x (plusC (idC  'x) (idC  'x)))) 0)
+(test (interp2(ifC(plusC (numC -5) (numC 10)) (mulC (numC 1) (numC 1)) (subC (numC 4) (numC 4))) (fdC 'double  'x (plusC (idC  'x) (idC  'x)))) 1)
+
+
+
+;Binding
+
+;this function takes symbol as name and value which is number
+
+;to bind any funciton
+
+
+(define-type Binding [bind (name : symbol) (val : number)])
+
+
+;; An alias to work easily on Environment.
+
+(define-type-alias Environment (listof Binding))
+
+
+;; Empty environment.
+
+(define mt-env empty)
+
+
+;; Extending environment
+
+(define extend-env cons)
+
+
+;; Example Environment.
+(define EnvNameSpace
+  (list
+   (bind 'x (numC 5))
+   (bind 'y (numC 6))
+   (bind 'z (numC 7))
+   ))
+
+;;lookup function takes n as a symbol and environment which includes binding values,
+
+;; then it checks wheter this funciton in environment or not?
+
+;;if there is,it produces value otherwise it gives error
+
+
+(define (lookup [for : symbol] [env : Environment]) : number
+
+  (cond
+
+    [(empty? env) (error 'lookup "name not found")]
+
+    [else (cond
+
+            [(symbol=? for (bind-name (first env)))
+
+             (bind-val (first env))]
+
+            [else (lookup for (rest env))])]))
+
+(test(lookup 'x EnvNameSpace)( numC 5))
+(test (lookup 'y EnvNameSpace) ( numC 6))
+(test (lookup 'z EnvNameSpace)( numC 7))
+
+;; interp : ExprC (listof FunDefC) -> number
+
+;; Interpreter 
+
+;; Purpose : To interpreter given ExprC to number
+
+;; Template : 
+
+;(define (interp [expr : ExprC] [env : Environment][fds : (listof FunDefC)]) : number
+
+;  (type-case
+
+;    [n ...]
+
+;    [id ...]
+
+;     [app..]
+
+;    [plusC..]
+
+;     [multC..]
+
+(define (interp-env [expr : ExprC] [env : Environment] [fds : (listof FunDefC)]) : number
+
+  (type-case ExprC expr
+
+    [numC (n) n]
+
+    [idC (n) (lookup n env)]
+
+    [appC (f a) (local ([define fd (get-fundef f fds)])
+
+                  (interp-env (fdC-body fd)
+
+                          (extend-env (bind (fdC-arg fd)
+
+                                            (interp-env a env fds))
+
+                                      mt-env) fds))]
+
+    [plusC (l r) (+ (interp-env l env fds) (interp-env r env fds))]
+    [subC (l r) (- (interp-env l env fds) (interp-env r env fds))]
+
+    [mulC (l r) (* (interp-env l env fds) (interp-env r env fds))]
+
+
+    [ifC (pred t f)
+
+            (if (= 0 (interp-env pred env fds))
+                 (interp-env t env fds)
+                 (interp-env f env fds))]
+
+ [factC (x) (cond
+               [(= x 1) 1]
+              [else (* x (interp-env (factC (- x 1)) env fds))])]
+
+
+
+[factaccC (x acc) (cond
+                     [ (= x 1) acc]
+                       [else ( interp-env (factaccC (- x 1) (* x acc)) env fds )])]
+
+[fibonacciC (x ) (cond
+                     [ (or (= x 1) (= x 2))1]
+                       [else (+( interp-env (fibonacciC (- x 1)) (fibonacciC (- x 2)) env fds ))])]
+
+    ))
+
+"TEST of Interp-env"
+(test (interp-env (plusC (numC 10) (appC 'const5 (numC 10)))
+              mt-env
+              (list (fdC 'const5 '_ (numC 5))))
+      15)
+
+(test (interp-env (plusC (numC 10) (appC 'double (plusC (numC 1) (numC 2))))
+              mt-env
+              (list (fdC 'double 'x (plusC (idC 'x) (idC 'x)))))
+      16)
+
+(test (interp-env (plusC (numC 10) (appC 'quadruple (plusC (numC 1) (numC 2))))
+              mt-env
+              (list (fdC 'quadruple 'x (appC 'double (appC 'double (idC 'x))))
+                    (fdC 'double 'x (plusC (idC 'x) (idC 'x)))))
+      22)
+
+(test (interp-env (mulC (numC 10 ) (appC 'quadruple (plusC (numC 1) (numC 2))))
+              mt-env
+              (list (fdC 'quadruple 'x (appC 'double (appC 'double (idC 'x))))
+                    (fdC 'double 'x (plusC (idC 'x) (idC 'x)))))
+      44);bad one
+
+(test (interp-env (mulC (numC 10 ) (appC 'double (plusC (numC 1) (numC 2))))
+              mt-env
+              (list (fdC 'quadruple 'x (appC 'double (appC 'double (idC 'x))))
+                    (fdC 'double 'x (plusC (idC 'x) (idC 'x)))))
+      60)
+
+
+
+
